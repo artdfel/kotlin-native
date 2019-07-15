@@ -213,7 +213,7 @@ private fun processCLib(args: Array<String>, additionalArgs: Map<String, Any> = 
 
     val libName = (additionalArgs["cstubsname"] as? String)?: fqParts.joinToString("") + "stubs"
 
-    val tempFiles = TempFiles(libName, argParser.get<String>("Xtemporary-files-dir"))
+    val tempFiles = TempFiles(libName, argParser.get("Xtemporary-files-dir"))
 
     val imports = parseImports((additionalArgs["import"] as? List<String>)?.toTypedArray() ?: arrayOf())
 
@@ -237,7 +237,7 @@ private fun processCLib(args: Array<String>, additionalArgs: Map<String, Any> = 
     outKtFile.parentFile.mkdirs()
 
     File(nativeLibsDir).mkdirs()
-    val outCFile = tempFiles.create(libName, ".${language.sourceFileExtension}")
+    val outCFile = File(nativeLibsDir, (libName + ".${language.sourceFileExtension}"))
 
     val logger = if (verbose) {
         { message: String -> println(message) }
@@ -264,29 +264,26 @@ private fun processCLib(args: Array<String>, additionalArgs: Map<String, Any> = 
     manifestAddend?.parentFile?.mkdirs()
     manifestAddend?.let { def.manifestAddendProperties.storeProperties(it) }
 
-    if (flavor == KotlinPlatform.JVM) {
+    when (flavor) {
+        KotlinPlatform.JVM -> {
+            val outOFile = tempFiles.create(libName,".o")
+            val compilerCmd = arrayOf(compiler, *stubIrContext.libraryForCStubs.compilerArgs.toTypedArray(),
+                    "-c", outCFile.absolutePath, "-o", outOFile.absolutePath)
+            runCmd(compilerCmd, verbose)
 
-        val outOFile = tempFiles.create(libName,".o")
-
-        val compilerCmd = arrayOf(compiler, *stubIrContext.libraryForCStubs.compilerArgs.toTypedArray(),
-                "-c", outCFile.absolutePath, "-o", outOFile.absolutePath)
-
-        runCmd(compilerCmd, verbose)
-
-        val outLib = File(nativeLibsDir, System.mapLibraryName(libName))
-
-        val linkerCmd = arrayOf(linker,
-                outOFile.absolutePath, "-shared", "-o", outLib.absolutePath,
-                *linkerOpts)
-
-        runCmd(linkerCmd, verbose)
-    } else if (flavor == KotlinPlatform.NATIVE) {
-        val outBcName = libName + ".bc"
-        val outLib = File(nativeLibsDir, outBcName)
-        val compilerCmd = arrayOf(compiler, *stubIrContext.libraryForCStubs.compilerArgs.toTypedArray(),
-                "-emit-llvm", "-c", outCFile.absolutePath, "-o", outLib.absolutePath)
-
-        runCmd(compilerCmd, verbose)
+            val outLib = File(nativeLibsDir, System.mapLibraryName(libName))
+            val linkerCmd = arrayOf(linker,
+                    outOFile.absolutePath, "-shared", "-o", outLib.absolutePath,
+                    *linkerOpts)
+            runCmd(linkerCmd, verbose)
+        }
+        KotlinPlatform.NATIVE -> {
+            val outBcName = libName + ".bc"
+            val outLib = File(nativeLibsDir, outBcName)
+            val compilerCmd = arrayOf(compiler, *stubIrContext.libraryForCStubs.compilerArgs.toTypedArray(),
+                    "-emit-llvm", "-c", outCFile.absolutePath, "-o", outLib.absolutePath)
+            runCmd(compilerCmd, verbose)
+        }
     }
     return argsToCompiler(staticLibraries, libraryPaths)
 }
