@@ -389,6 +389,7 @@ internal class KonanSymbols(context: Context, private val symbolTable: SymbolTab
     val refClass = symbolTable.referenceClass(context.getKonanInternalClass("Ref"))
 
     val kFunctionImpl =  symbolTable.referenceClass(context.reflectionTypes.kFunctionImpl)
+    val kSuspendFunctionImpl =  symbolTable.referenceClass(context.reflectionTypes.kSuspendFunctionImpl)
 
     val kMutableProperty0 = symbolTable.referenceClass(context.reflectionTypes.kMutableProperty0)
     val kMutableProperty1 = symbolTable.referenceClass(context.reflectionTypes.kMutableProperty1)
@@ -489,6 +490,10 @@ internal class KonanSymbols(context: Context, private val symbolTable: SymbolTab
 
     val kFunctions = (0 .. KONAN_FUNCTION_INTERFACES_MAX_PARAMETERS)
             .map { symbolTable.referenceClass(context.reflectionTypes.getKFunction(it)) }
+
+    // Since KSuspendFunctionN inherits Function{N+1} and we only have 0..22 range, skip the last one for now.
+    val kSuspendFunctions = (0 .. KONAN_FUNCTION_INTERFACES_MAX_PARAMETERS - 1)
+            .map { symbolTable.referenceClass(context.reflectionTypes.getKSuspendFunction(it)) }
 
     fun getKFunctionType(returnType: IrType, parameterTypes: List<IrType>): IrType {
         val kFunctionClassSymbol = kFunctions[parameterTypes.size]
