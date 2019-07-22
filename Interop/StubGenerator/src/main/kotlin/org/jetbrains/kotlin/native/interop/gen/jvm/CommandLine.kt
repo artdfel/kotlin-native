@@ -79,7 +79,8 @@ fun getCInteropArguments(): List<OptionDescriptor> {
                     isMultiple = true, delimiter = " ", deprecatedWarning = "Option -copt is deprecated. Please use -compiler-options."),
             OptionDescriptor(ArgType.String(), "lopt", description = "additional linker options (allows to add several options separated by spaces)",
                     isMultiple = true, delimiter = " ", deprecatedWarning = "Option -lopt is deprecated. Please use -linker-options."),
-            OptionDescriptor(ArgType.String(), "linker", description = "use specified linker")
+            OptionDescriptor(ArgType.String(), "linker", description = "use specified linker"),
+            OptionDescriptor(ArgType.Boolean(), "metadata", description = "Output klib with metadata", defaultValue = "false")
     )
     return (options + getCommonInteropArguments())
 }

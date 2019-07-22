@@ -24,6 +24,7 @@ import org.jetbrains.kotlin.native.interop.gen.wasm.processIdlLib
 import org.jetbrains.kotlin.native.interop.indexer.*
 import org.jetbrains.kotlin.native.interop.tool.*
 import org.jetbrains.kliopt.ArgParser
+import org.jetbrains.kotlin.native.interop.gen.metadata.buildKlib
 import java.io.File
 import java.lang.IllegalArgumentException
 import java.nio.file.*
@@ -40,26 +41,12 @@ fun interop(flavor: String, args: Array<String>, additionalArgs: Map<String, Any
             else -> error("Unexpected flavor")
         }
 
-// Options, whose values are space-separated and can be escaped.
-val escapedOptions = setOf("-compilerOpts", "-linkerOpts", "-compiler-options", "-linker-options")
-
-private fun String.asArgList(key: String) =
-        if (escapedOptions.contains(key))
-            this.split(Regex("(?<!\\\\)\\Q \\E")).filter { it.isNotEmpty() }.map { it.replace("\\ ", " ") }
-        else
-            listOf(this)
-
 private fun <T> Collection<T>.atMostOne(): T? {
     return when (this.size) {
         0 -> null
         1 -> this.iterator().next()
         else -> throw IllegalArgumentException("Collection has more than one element.")
     }
-}
-
-private fun List<String>?.isTrue(): Boolean {
-    // The rightmost wins, null != "true".
-    return this?.last() == "true"
 }
 
 private fun runCmd(command: Array<String>, verbose: Boolean = false) {
@@ -217,6 +204,8 @@ private fun processCLib(args: Array<String>, additionalArgs: Map<String, Any> = 
 
     val imports = parseImports((additionalArgs["import"] as? List<String>)?.toTypedArray() ?: arrayOf())
 
+    val shouldEmitMetadata = argParser.get<Boolean>("metadata")
+
     val library = buildNativeLibrary(tool, def, argParser, imports)
 
     val (nativeIndex, compilation) = buildNativeIndex(library, verbose)
@@ -246,9 +235,13 @@ private fun processCLib(args: Array<String>, additionalArgs: Map<String, Any> = 
     }
 
     val stubIrContext = StubIrContext(logger, configuration, nativeIndex, imports, flavor, libName)
+    val interopGenerationMode = if (shouldEmitMetadata == true) {
+        InteropGenerationMode.Metadata(File(outCFile.absolutePath))
+    } else {
+        InteropGenerationMode.Text(outKtFile, File(outCFile.absolutePath), entryPoint)
+    }
     val stubIrDriver = StubIrDriver(stubIrContext)
-    val output = StubIrOutput.Text(outKtFile, File(outCFile.absolutePath), entryPoint)
-    stubIrDriver.run(output)
+    stubIrDriver.run(interopGenerationMode)
 
     // TODO: if a library has partially included headers, then it shouldn't be used as a dependency.
     def.manifestAddendProperties["includedHeaders"] = nativeIndex.includedHeaders.joinToString(" ") { it.value }
@@ -259,7 +252,7 @@ private fun processCLib(args: Array<String>, additionalArgs: Map<String, Any> = 
     }
 
     def.manifestAddendProperties["interop"] = "true"
-
+    def.manifestAddendProperties["metadataBased"] = if (shouldEmitMetadata == true) "true" else "false"
     stubIrContext.addManifestProperties(def.manifestAddendProperties)
 
     manifestAddend?.parentFile?.mkdirs()
@@ -286,7 +279,12 @@ private fun processCLib(args: Array<String>, additionalArgs: Map<String, Any> = 
             runCmd(compilerCmd, verbose)
         }
     }
-    return argsToCompiler(staticLibraries, libraryPaths)
+    if (interopGenerationMode is InteropGenerationMode.Metadata) {
+        buildKlib(ktGenRoot ?: "", interopGenerationMode.output, def.manifestAddendProperties, "test")
+        return null
+    } else {
+        return argsToCompiler(staticLibraries, libraryPaths)
+    }
 }
 
 internal fun prepareTool(target: String?, flavor: KotlinPlatform): ToolConfig {

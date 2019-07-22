@@ -10,8 +10,6 @@ import org.jetbrains.kotlin.konan.library.*
 import org.jetbrains.kotlin.konan.target.Distribution
 import org.jetbrains.kotlin.native.interop.gen.jvm.interop
 import org.jetbrains.kliopt.ArgParser
-import org.jetbrains.kotlin.konan.CURRENT
-import org.jetbrains.kotlin.konan.KonanVersion
 import org.jetbrains.kotlin.library.toUnresolvedLibraries
 import org.jetbrains.kotlin.native.interop.tool.*
 
