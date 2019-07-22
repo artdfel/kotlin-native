@@ -25,6 +25,6 @@ internal abstract class KSuspendFunctionImpl<out R>(
     }
 
     override fun toString(): String {
-        return ("suspend function " + name) + " (Kotlin reflection is not available)"
+        return "suspend function $name (Kotlin reflection is not available)"
     }
 }
