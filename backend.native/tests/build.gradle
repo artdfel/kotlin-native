@@ -1701,7 +1701,7 @@ task coroutines_functionReference_simple(type: KonanLocalTest) {
 }
 
 task coroutines_functionReference_eqeq_name(type: KonanLocalTest) {
-    goldValue = "foo\nbar\nfalse\ntrue\nfalse\ntrue\n"
+    goldValue = ""
     source = "codegen/coroutines/functionReference_eqeq_name.kt"
 }
 

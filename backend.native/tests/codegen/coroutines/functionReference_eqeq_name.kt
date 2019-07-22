@@ -20,10 +20,10 @@ class Foo(val x: Int) {
     val ref3 = ::foo
     val ref4 = Foo(42)::bar
     val ref5 = rec::bar
-    println(ref1.name)
-    println(ref2.name)
-    println(ref1 == ref2)
-    println(ref1 == ref3)
-    println(ref2 == ref4)
-    println(ref2 == ref5)
+    assertEquals("foo", ref1.name)
+    assertEquals("bar", ref2.name)
+    assertFalse(ref1 == ref2)
+    assertTrue(ref1 == ref3)
+    assertFalse(ref2 == ref4)
+    assertTrue(ref2 == ref5)
 }
