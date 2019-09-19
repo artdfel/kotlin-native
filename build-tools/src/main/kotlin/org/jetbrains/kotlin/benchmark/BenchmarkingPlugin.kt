@@ -1,9 +1,12 @@
 package org.jetbrains.kotlin.benchmark
 
+import groovy.lang.Closure
 import org.gradle.api.NamedDomainObjectContainer
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.artifacts.Dependency
 import org.gradle.jvm.tasks.Jar
+import org.gradle.util.ConfigureUtil
 import org.jetbrains.kotlin.*
 import org.jetbrains.kotlin.gradle.plugin.KotlinSourceSet
 import org.jetbrains.kotlin.gradle.plugin.mpp.KotlinNativeTarget
@@ -74,7 +77,40 @@ open class BenchmarkExtension @Inject constructor(val project: Project) {
     var commonSrcDirs: Collection<Any> = emptyList()
     var jvmSrcDirs: Collection<Any> = emptyList()
     var nativeSrcDirs: Collection<Any> = emptyList()
+    var mingwSrcDirs: Collection<Any> = emptyList()
+    var posixSrcDirs: Collection<Any> = emptyList()
     var linkerOpts: Collection<String> = emptyList()
+
+    val dependencies: BenchmarkDependencies = BenchmarkDependencies()
+
+    fun dependencies(action: BenchmarkDependencies.() -> Unit) =
+        dependencies.action()
+
+    fun dependencies(action: Closure<*>) {
+        ConfigureUtil.configure(action, dependencies)
+    }
+
+    inner class BenchmarkDependencies  {
+        private val sourceSets: NamedDomainObjectContainer<KotlinSourceSet>
+            get() = project.kotlin.sourceSets
+
+        fun project(path: String): Dependency = project.dependencies.project(mapOf("path" to path))
+
+        fun project(path: String, configuration: String): Dependency =
+            project.dependencies.project(mapOf("path" to path, "configuration" to configuration))
+
+        fun common(notation: Any) = sourceSets.commonMain.dependencies {
+            implementation(notation)
+        }
+
+        fun jvm(notation: Any) = sourceSets.jvmMain.dependencies {
+            implementation(notation)
+        }
+
+        fun native(notation: Any) = sourceSets.nativeMain.dependencies {
+            implementation(notation)
+        }
+    }
 }
 
 /**
@@ -99,6 +135,11 @@ open class BenchmarkingPlugin: Plugin<Project> {
                 implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlinStdlibVersion")
             }
 
+            project.configurations.getByName(nativeMain.implementationConfigurationName).apply {
+                // Exclude dependencies already included into K/N distribution (aka endorsed libraries).
+                exclude(mapOf("module" to "kotlinx.cli"))
+            }
+
             repositories.maven {
                 it.setUrl(kotlinStdlibRepo)
             }
@@ -107,7 +148,11 @@ open class BenchmarkingPlugin: Plugin<Project> {
             afterEvaluate {
                 benchmark.let {
                     commonMain.kotlin.srcDirs(*it.commonSrcDirs.toTypedArray())
-                    nativeMain.kotlin.srcDirs(*it.nativeSrcDirs.toTypedArray())
+                    if (HostManager.hostIsMingw) {
+                        nativeMain.kotlin.srcDirs(*(it.nativeSrcDirs + it.mingwSrcDirs).toTypedArray())
+                    } else {
+                       nativeMain.kotlin.srcDirs(*(it.nativeSrcDirs + it.posixSrcDirs).toTypedArray())
+                    }
                     jvmMain.kotlin.srcDirs(*it.jvmSrcDirs.toTypedArray())
                 }
             }
@@ -128,7 +173,7 @@ open class BenchmarkingPlugin: Plugin<Project> {
 
     private fun Project.configureNativeTarget(hostPreset: KotlinNativeTargetPreset) {
         kotlin.targetFromPreset(hostPreset, NATIVE_TARGET_NAME) {
-            compilations.getByName("main").kotlinOptions.freeCompilerArgs = project.compilerArgs + "-opt"
+            compilations.getByName("main").kotlinOptions.freeCompilerArgs = project.compilerArgs + listOf("-l", "kotlinx-cli")
             binaries.executable(NATIVE_EXECUTABLE_NAME, listOf(RELEASE)) {
                 if (HostManager.hostIsMingw) {
                     linkerOpts.add("-L${mingwPath}/lib")

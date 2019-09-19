@@ -1,0 +1,35 @@
+def endorsedLibrariesList = ['kotlinx.cli']
+
+def toTaskName(library) {
+    def name = ""
+    library.split("\\.").each { word -> name += word.capitalize() }
+    return name
+}
+
+task clean {
+    doLast {
+        delete buildDir
+    }
+}
+
+task jvmJar {
+    endorsedLibrariesList.each { library ->
+        dependsOn "$library:jvmJar"
+    }
+}
+
+// Build all default libraries.
+targetList.each { target ->
+    task("${target}EndorsedLibraries", type: Copy) {
+        endorsedLibrariesList.each { library ->
+            dependsOn "$library:${target}${ toTaskName(library) }"
+        }
+        destinationDir project.buildDir
+        endorsedLibrariesList.each { library ->
+            from(project("$library").file("build/${target}${ toTaskName(library) }")) {
+                include('**')
+                into("${library.replaceAll("\\.", "-")}")
+            }
+        }
+    }
+}

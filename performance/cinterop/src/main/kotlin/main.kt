@@ -19,7 +19,7 @@ import org.jetbrains.structsProducedByMacrosBenchmarks.*
 import org.jetbrains.benchmarksLauncher.*
 import org.jetbrains.structsBenchmarks.*
 import org.jetbrains.typesBenchmarks.*
-import org.jetbrains.kliopt.*
+import kotlinx.cli.*
 
 class CinteropLauncher : Launcher() {
     override val benchmarks = BenchmarksCollection(
@@ -39,8 +39,10 @@ class CinteropLauncher : Launcher() {
 
 fun main(args: Array<String>) {
     val launcher = CinteropLauncher()
-    BenchmarksRunner.runBenchmarks(args, { parser: ArgParser ->
-        launcher.launch(parser.get<Int>("warmup")!!, parser.get<Int>("repeat")!!, parser.get<String>("prefix")!!,
-                parser.getAll<String>("filter"), parser.getAll<String>("filterRegex"))
+    BenchmarksRunner.runBenchmarks(args, { arguments: BenchmarkArguments ->
+        if (arguments is BaseBenchmarkArguments) {
+            launcher.launch(arguments.warmup, arguments.repeat, arguments.prefix,
+                    arguments.filter, arguments.filterRegex, arguments.verbose)
+        } else emptyList()
     }, benchmarksListAction = launcher::benchmarksListAction)
 }

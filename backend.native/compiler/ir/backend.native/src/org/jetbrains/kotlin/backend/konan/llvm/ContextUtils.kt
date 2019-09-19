@@ -150,7 +150,7 @@ internal interface ContextUtils : RuntimeAware {
      * or just drop all [else] branches of corresponding conditionals.
      */
     fun isExternal(declaration: IrDeclaration): Boolean {
-        return false
+        return !context.llvmModuleSpecification.containsDeclaration(declaration)
     }
 
     /**
@@ -312,8 +312,7 @@ internal class Llvm(val context: Context, val llvmModule: LLVMModuleRef) {
         val result = LLVMAddFunction(llvmModule, name, type)!!
         attributes.forEach {
             val kindId = getLlvmAttributeKindId(it)
-            val attribute = LLVMCreateEnumAttribute(LLVMGetTypeContext(type), kindId, 0)!!
-            LLVMAddAttributeAtIndex(result, LLVMAttributeFunctionIndex, attribute)
+            addLlvmFunctionEnumAttribute(result, kindId)
         }
         return result
     }
@@ -400,6 +399,8 @@ internal class Llvm(val context: Context, val llvmModule: LLVMModuleRef) {
         context.config.resolvedLibraries
                 .getFullList(TopologicalLibraryOrder)
                 .filter { (!it.isDefault && !context.config.purgeUserLibs) || imports.bitcodeIsUsed(it) }
+                // TODO: the filter above is incorrect when compiling to multiple LLVM modules.
+                .filter { context.llvmModuleSpecification.containsLibrary(it) }
     }
 
     val additionalProducedBitcodeFiles = mutableListOf<String>()
@@ -435,13 +436,18 @@ internal class Llvm(val context: Context, val llvmModule: LLVMModuleRef) {
     val leaveFrameFunction = importModelSpecificRtFunction("LeaveFrame")
     val lookupOpenMethodFunction = importRtFunction("LookupOpenMethod")
     val isInstanceFunction = importRtFunction("IsInstance")
-    val checkInstanceFunction = importRtFunction("CheckInstance")
+    val isInstanceOfClassFastFunction = importRtFunction("IsInstanceOfClassFast")
     val throwExceptionFunction = importRtFunction("ThrowException")
     val appendToInitalizersTail = importRtFunction("AppendToInitializersTail")
     val initRuntimeIfNeeded = importRtFunction("Kotlin_initRuntimeIfNeeded")
     val mutationCheck = importRtFunction("MutationCheck")
     val freezeSubgraph = importRtFunction("FreezeSubgraph")
     val checkMainThread = importRtFunction("CheckIsMainThread")
+
+    val kRefSharedHolderInitLocal = importRtFunction("KRefSharedHolder_initLocal")
+    val kRefSharedHolderInit = importRtFunction("KRefSharedHolder_init")
+    val kRefSharedHolderDispose = importRtFunction("KRefSharedHolder_dispose")
+    val kRefSharedHolderRef = importRtFunction("KRefSharedHolder_ref")
 
     val createKotlinObjCClass by lazy { importRtFunction("CreateKotlinObjCClass") }
     val getObjCKotlinTypeInfo by lazy { importRtFunction("GetObjCKotlinTypeInfo") }
@@ -520,7 +526,7 @@ internal class Llvm(val context: Context, val llvmModule: LLVMModuleRef) {
     val usedFunctions = mutableListOf<LLVMValueRef>()
     val usedGlobals = mutableListOf<LLVMValueRef>()
     val compilerUsedGlobals = mutableListOf<LLVMValueRef>()
-    val staticInitializers = mutableListOf<LLVMValueRef>()
+    val staticInitializers = mutableListOf<StaticInitializer>()
     val fileInitializers = mutableListOf<IrField>()
     val objects = mutableSetOf<LLVMValueRef>()
     val sharedObjects = mutableSetOf<LLVMValueRef>()
@@ -542,3 +548,5 @@ internal class Llvm(val context: Context, val llvmModule: LLVMModuleRef) {
     val llvmFloat = LLVMFloatType()!!
     val llvmDouble = LLVMDoubleType()!!
 }
+
+class StaticInitializer(val file: IrFile, val initializer: LLVMValueRef)

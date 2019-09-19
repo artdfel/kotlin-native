@@ -9,24 +9,20 @@ import org.jetbrains.kotlin.konan.target.PlatformManager
 import org.jetbrains.kotlin.konan.library.*
 import org.jetbrains.kotlin.konan.target.Distribution
 import org.jetbrains.kotlin.native.interop.gen.jvm.interop
-import org.jetbrains.kliopt.ArgParser
-import org.jetbrains.kotlin.konan.CURRENT
-import org.jetbrains.kotlin.konan.KonanVersion
 import org.jetbrains.kotlin.library.toUnresolvedLibraries
 import org.jetbrains.kotlin.native.interop.tool.*
 
 // TODO: this function should eventually be eliminated from 'utilities'. 
-// The interaction of interop and the compler should be streamlined.
+// The interaction of interop and the compiler should be streamlined.
 
-fun invokeInterop(flavor: String, args: Array<String>): Array<String>? {
-    val argParser = ArgParser(if (flavor == "native") getCInteropArguments() else getJSInteropArguments(),
-            useDefaultHelpShortName = false)
-    if (!argParser.parse(args))
-        return null
-    val outputFileName = argParser.get<String>("output")!!
-    val noDefaultLibs = argParser.get<Boolean>(NODEFAULTLIBS)!!
-    val purgeUserLibs = argParser.get<Boolean>(PURGE_USER_LIBS)!!
-    val temporaryFilesDir = argParser.get<String>(TEMP_DIR)
+fun invokeInterop(flavor: String, args: Array<String>): Array<String> {
+    val arguments = if (flavor == "native") CInteropArguments() else JSInteropArguments()
+    arguments.argParser.parse(args)
+    val outputFileName = arguments.output
+    val noDefaultLibs = arguments.nodefaultlibs || arguments.nodefaultlibsDeprecated
+    val noEndorsedLibs = arguments.noendorsedlibs
+    val purgeUserLibs = arguments.purgeUserLibs
+    val temporaryFilesDir = arguments.tempDir
 
     val buildDir = File("$outputFileName-build")
     val generatedDir = File(buildDir, "kotlin")
@@ -40,9 +36,10 @@ fun invokeInterop(flavor: String, args: Array<String>): Array<String>? {
     val additionalProperties = mutableMapOf<String, Any>(
             "manifest" to manifest.path)
     val cstubsName ="cstubs"
-    val libraries = argParser.getAll<String>("library") ?: listOf<String>()
-    val repos = argParser.getAll<String>("repo") ?: listOf<String>()
-    val targetRequest = argParser.get<String>("target")!!
+    val libraries = arguments.library
+    val repos = arguments.repo
+    val targetRequest = if (arguments is CInteropArguments) arguments.target
+        else (arguments as JSInteropArguments).target
     val target = PlatformManager().targetManager(targetRequest).target
 
     if (flavor == "native") {
@@ -53,7 +50,8 @@ fun invokeInterop(flavor: String, args: Array<String>): Array<String>? {
                 Distribution()
         ).libraryResolver()
         val allLibraries = resolver.resolveWithDependencies(
-                libraries.toUnresolvedLibraries, noStdLib = true, noDefaultLibs = noDefaultLibs
+                libraries.toUnresolvedLibraries, noStdLib = true, noDefaultLibs = noDefaultLibs,
+                noEndorsedLibs = noEndorsedLibs
         ).getFullList()
 
         val imports = allLibraries.map { library ->
@@ -66,7 +64,7 @@ fun invokeInterop(flavor: String, args: Array<String>): Array<String>? {
         additionalProperties.putAll(mapOf("cstubsname" to cstubsName, "import" to imports))
     }
 
-    val cinteropArgsToCompiler = interop(flavor, args + additionalArgs, additionalProperties) ?: return null
+    val cinteropArgsToCompiler = interop(flavor, args + additionalArgs, additionalProperties)
 
     val nativeStubs = 
         if (flavor == "wasm") 
@@ -86,6 +84,7 @@ fun invokeInterop(flavor: String, args: Array<String>): Array<String>? {
         libraries.flatMap { listOf("-library", it) } + 
         repos.flatMap { listOf("-repo", it) } +
         (if (noDefaultLibs) arrayOf("-$NODEFAULTLIBS") else emptyArray()) +
+        (if (noEndorsedLibs) arrayOf("-$NOENDORSEDLIBS") else emptyArray()) +
         (if (purgeUserLibs) arrayOf("-$PURGE_USER_LIBS") else emptyArray())
 
     return konancArgs
